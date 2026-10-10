@@ -31,8 +31,12 @@ export function expandHome(s: string): string {
  * Glob match: `*` matches any run of characters INCLUDING `/` AND newlines (so
  * `*` is a true universal fallback, `*.md` matches nested paths, and a
  * multi-line bash command still hits the mode's `"*"` rule); `?` matches
- * exactly one character, newline included. `~`/`$HOME` are expanded on both
- * pattern and target before matching.
+ * exactly one character, newline included. A double-star immediately followed
+ * by a slash matches ZERO or more directories (so a rule written "`**`, a
+ * slash, then `exemple.js`" also matches a bare `exemple.js` with no slash —
+ * a protection rule with only a double-star directory prefix used to be blind
+ * to naked relative paths); a bare double-star keeps the classic `.*` meaning.
+ * `~`/`$HOME` are expanded on both pattern and target before matching.
  *
  * The regex is compiled with the `s` (dotAll) flag on purpose: without it `.`
  * excludes `\n`, so a single newline inside a command argument made every
@@ -43,10 +47,13 @@ export function matchPattern(pattern: string, target: string): boolean {
   const p = expandHome(pattern);
   const t = expandHome(target);
   let re = "^";
-  for (const ch of p) {
-    if (ch === "*") re += ".*";
-    else if (ch === "?") re += ".";
-    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (let i = 0; i < p.length; i++) {
+    if (p[i] === "*" && p[i + 1] === "*" && p[i + 2] === "/") {
+      re += "(?:.*/)?"; // '**/' — zero or more directories
+      i += 2;
+    } else if (p[i] === "*") re += ".*";
+    else if (p[i] === "?") re += ".";
+    else re += p[i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
   re += "$";
   return new RegExp(re, "s").test(t);

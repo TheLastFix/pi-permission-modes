@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`**/` glob patterns now match slash-less relative paths.** `*` was translated
+  to `.*` while `/` stayed literal, so any `**/`-prefixed pattern required a
+  slash and a naked relative path (e.g. `exemple.js`) never matched — the rule
+  was silently skipped in favor of `"*"` (last-match-wins), which bypassed e.g.
+  a `**/exemple.js: deny` gate on `read` (and on bash path tokens). A `**`
+  immediately
+  followed by `/` now matches zero or more directories; a bare `**` keeps its
+  classic meaning.
+
 ## [2.4.1]
 
 ### Security
