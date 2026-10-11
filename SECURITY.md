@@ -91,7 +91,25 @@ you can rely on it appropriately.
   everything you allow is exfiltration surface. The runtime refuses an allowed
   name that resolves to loopback, link-local, this host's own addresses, or
   a cloud metadata endpoint, so a permitted domain cannot be pointed at local
-  services through DNS. `/net open` disables the
+  services through DNS. That guard governs the proxy path (name-to-address
+  confusion). Direct loopback dials are a separate, explicit path: a mode with
+  `sandbox.allowLocalBind` (macOS only, opt-in per mode, never settable to `true`
+  by project configs) lets sandboxed bash reach loopback and bind local ports
+  without the proxy. Outbound direct dials stay loopback-only, but bind/inbound
+  cover all local interfaces, so a `0.0.0.0` dev server is LAN-reachable while it
+  runs - bind `127.0.0.1`. And the flag trusts the local services themselves:
+  with dev-default auth (notably Postgres `trust` on loopback, the `initdb`
+  default) it is passwordless superuser access for any sandboxed command, so
+  enabling it requires service-side hygiene first - per-project roles and
+  passwords, `REVOKE CONNECT ... FROM PUBLIC`, no superuser for automation,
+  `scram-sha-256` (never `trust`) for loopback, no production credentials on dev
+  machines. Process lifetime is platform-dependent, and bound ports follow
+  the process, not the command: on Linux the sandbox teardown kills
+  background work, but on macOS commands that background (`&`, `nohup`)
+  demonstrably survive it (verified live) with their Seatbelt profile still
+  applied - confinement holds, only the lifetime is unbounded. Prefer
+  foreground servers, and never assume a bound port closes with the command
+  on macOS. `/net open` disables the
   allowlist entirely for the session (shown orange in the footer). Interactive
   grants are user authority: they can reach past a project config's tightened
   allowlist, exactly like approving an out-of-project command. "Allow forever"

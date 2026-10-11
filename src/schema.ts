@@ -96,6 +96,14 @@ export interface SandboxProfile {
    * back to true.
    */
   askOnBlockedHost?: boolean;
+  /**
+   * Direct loopback TCP plus local bind/inbound (the runtime's
+   * `network.allowLocalBinding`, macOS only): proxy-unaware clients
+   * (database drivers) reach 127.0.0.1/::1 and servers can listen
+   * locally; other egress stays denied. Absent/false = today's behavior.
+   * Projects may pin it to false, never enable it.
+   */
+  allowLocalBind?: boolean;
 }
 
 /** One named mode. */

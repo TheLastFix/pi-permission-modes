@@ -106,6 +106,24 @@ test("askOnBlockedHost:false: silent-deny wording, tool still offered", () => {
   assert.doesNotMatch(out ?? "", /pauses while the user is asked/);
 });
 
+test("allowLocalBind: loopback carve-out stated when set, absent otherwise", () => {
+  const on = sandboxAwarenessPrompt(mode({}, { allowLocalBind: true }), { active: true })!;
+  assert.match(on, /Loopback is directly reachable and local ports can be bound/);
+  // Both ask variants carry it (live-ask and silent-deny).
+  const silent = sandboxAwarenessPrompt(mode({}, { allowLocalBind: true, askOnBlockedHost: false }), { active: true })!;
+  assert.match(silent, /Loopback is directly reachable/);
+  assert.match(silent, /silently unreachable/);
+  // Off (or absent): no sentence.
+  assert.doesNotMatch(sandboxAwarenessPrompt(mode(), { active: true })!, /Loopback is directly reachable/);
+  // Unrestricted network or session-open: the sentence belongs to the filtered branch only.
+  const noNet = sandboxAwarenessPrompt(mode({}, { allowLocalBind: true, network: undefined }), { active: true })!;
+  assert.match(noNet, /Network is unrestricted/);
+  assert.doesNotMatch(noNet, /Loopback is directly reachable/);
+  const open = sandboxAwarenessPrompt(mode({}, { allowLocalBind: true }), { active: true, networkOpen: true })!;
+  assert.match(open, /filtering is disabled/);
+  assert.doesNotMatch(open, /Loopback is directly reachable/);
+});
+
 test("denyWrite entries are listed when present", () => {
   const out = sandboxAwarenessPrompt(mode({}, { denyWrite: ["dist", "vendor"] }), { active: true });
   assert.match(out ?? "", /write-denied: dist, vendor\./);

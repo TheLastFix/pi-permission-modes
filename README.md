@@ -423,6 +423,7 @@ Modes are data, layered in this order:
         "allowRead": [],                // readable again inside denyRead (see "Strict home" below)
         "denyWrite": [],
         "network": { "allowedDomains": ["github.com", "*.github.com"], "deniedDomains": [] },
+        "allowLocalBind": false,          // direct loopback TCP + local bind/inbound (macOS only; projects can only set false)
         "askOnBlockedHost": true          // live prompt for hosts outside the allowlist (false = silent deny)
       },
       "permission": {

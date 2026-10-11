@@ -109,10 +109,15 @@ export function sandboxAwarenessPrompt(mode: ModeDef, opts: AwarenessOptions): s
     const scope = domains.length
       ? `- Network is limited to these domains: ${domains.join(", ")}.`
       : "- No domains are allowlisted for bash network access.";
+    // Loopback bypasses the proxy (macOS only): say so or the model
+    // rediscovers it through failed commands.
+    const loopback = sb.allowLocalBind
+      ? " Loopback is directly reachable and local ports can be bound (this host only, macOS only); everything else still goes through the allowlist."
+      : "";
     lines.push(
       sb.askOnBlockedHost === false
-        ? `${scope} Other hosts are silently unreachable — request access with the request_network_access tool.`
-        : `${scope} A request to any other host pauses while the user is asked to allow it — if they approve, simply retry the command. To get domains approved up front (e.g. before an install that hits several hosts), call the request_network_access tool.`,
+        ? `${scope}${loopback} Other hosts are silently unreachable — request access with the request_network_access tool.`
+        : `${scope}${loopback} A request to any other host pauses while the user is asked to allow it — if they approve, simply retry the command. To get domains approved up front (e.g. before an install that hits several hosts), call the request_network_access tool.`,
     );
   }
   lines.push(

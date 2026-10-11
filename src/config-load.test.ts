@@ -354,6 +354,52 @@ test("project: askOnBlockedHost can be forced off (silent deny), never back on",
   s.cleanup();
 });
 
+test("sandbox.allowLocalBind: global opt-in projects to the runtime; projects can only pin false", () => {
+  const s = sandbox({
+    global: { modes: { build: { sandbox: { allowLocalBind: true } }, plan: { sandbox: { allowLocalBind: "yes" } }, yolo: { sandbox: { allowLocalBind: true } } } },
+    project: {
+      modes: {
+        build: { sandbox: { allowLocalBind: true } }, // repeating inherited true: silent
+        default: { sandbox: { allowLocalBind: true } }, // enabling: warned + ignored
+        plan: { sandbox: { allowLocalBind: false } }, // pinning false over absent: stays absent, silent
+        yolo: { sandbox: { allowLocalBind: false } }, // real tightening true→false: silent
+      },
+    },
+  });
+  const c = loadModeConfig(s.cwd, s.agentDir, (m) => s.errors.push(m));
+  assert.equal(c.modes.build.sandbox.allowLocalBind, true);
+  assert.equal(c.modes.default.sandbox.allowLocalBind, undefined);
+  assert.ok(s.errors.some((e) => /cannot enable sandbox\.allowLocalBind/.test(e)));
+  assert.equal(c.modes.plan.sandbox.allowLocalBind, undefined);
+  assert.equal(c.modes.yolo.sandbox.allowLocalBind, false);
+  assert.ok(s.errors.some((e) => /sandbox\.allowLocalBind.*wrong type/.test(e)), "wrong-typed global value dropped with a warning");
+  assert.ok(!s.errors.some((e) => /build.*allowLocalBind/.test(e)), "repeating inherited true stays silent");
+  assert.ok(!s.errors.some((e) => /yolo.*allowLocalBind/.test(e)), "real tightening true→false stays silent");
+  s.cleanup();
+});
+
+test("sandbox.network: unknown nested keys warn instead of silently doing nothing", () => {
+  const s = sandbox({
+    global: { modes: { build: { sandbox: { network: { allowedDomains: ["example.com"], allowLocalBinding: true } } } } },
+  });
+  const c = loadModeConfig(s.cwd, s.agentDir, (m) => s.errors.push(m));
+  // The documented path is top-level sandbox.allowLocalBind: the nested
+  // runtime-shaped key must not silently pretend to work.
+  assert.deepEqual(c.modes.build.sandbox.network, { allowedDomains: ["example.com"] }); // wholesale replace, deniedDomains untouched-by-override
+  assert.ok(s.errors.some((e) => /unknown sandbox\.network field "allowLocalBinding"/.test(e)));
+  s.cleanup();
+});
+
+test("profileToConfig: allowLocalBinding emitted only when true", () => {
+  const off = profileToConfig({ enabled: true, writable: true });
+  assert.ok(!("allowLocalBinding" in off.network), "absent stays absent (byte-identical stock output)");
+  const on = profileToConfig({ enabled: true, writable: true, allowLocalBind: true, network: { allowedDomains: ["example.com"] } });
+  assert.equal(on.network.allowLocalBinding, true);
+  if (runtimeSchema) {
+    assert.doesNotThrow(() => runtimeSchema.parse({ network: on.network, filesystem: on.filesystem }));
+  }
+});
+
 test("persistModeRule: converts a string surface to a map and preserves other content", () => {
   const s = sandbox({
     global: { $schema: "./x.json", modes: { default: { permission: { tool: "allow", bash: "deny" } } } },

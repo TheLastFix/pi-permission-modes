@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Opt-in `sandbox.allowLocalBind` (macOS only).** Forwards the runtime's
+  `network.allowLocalBinding`: direct loopback TCP plus local bind/inbound
+  for proxy-unaware clients (database drivers) and local dev servers, with
+  non-loopback egress still denied and proxy filtering unchanged. Absent =
+  `false` (today's behavior, byte-identical output); project configs may pin
+  it to `false`, never enable it. Enabling it trusts your local services'
+auth (dev-default `trust` auth means full local access), so harden
+  service-side credentials first — see `SECURITY.md`.
+
 ## [2.4.1]
 
 ### Security

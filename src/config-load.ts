@@ -91,6 +91,7 @@ function sanitizeSandbox(raw: unknown, where: string, onError: OnError): Partial
       case "enabled":
       case "writable":
       case "askOnBlockedHost":
+      case "allowLocalBind":
         if (typeof v === "boolean") out[k] = v;
         else drop(k);
         break;
@@ -105,6 +106,14 @@ function sanitizeSandbox(raw: unknown, where: string, onError: OnError): Partial
         if (!isPlainObject(v)) {
           drop(k);
           break;
+        }
+        // Unknown nested keys are ignored with a warning (a runtime-shaped
+        // `network.allowLocalBinding` set here would silently do nothing:
+        // the documented path is the top-level `sandbox.allowLocalBind`).
+        for (const [nk] of safeEntries(v)) {
+          if (nk !== "allowedDomains" && nk !== "deniedDomains") {
+            onError(`permission-mode: ignoring unknown sandbox.network field "${nk}" in ${where}`);
+          }
         }
         const net: NonNullable<SandboxProfile["network"]> = {};
         if (v.allowedDomains !== undefined) {
@@ -177,15 +186,22 @@ export const FALLBACK_CONFIG: PermissionModeConfig = {
  */
 export interface SandboxConfig {
   enabled?: boolean;
-  network: { allowedDomains?: string[]; deniedDomains: string[] };
+  network: { allowedDomains?: string[]; deniedDomains: string[]; allowLocalBinding?: boolean };
   filesystem: { denyRead: string[]; allowRead?: string[]; allowWrite: string[]; denyWrite: string[] };
 }
 
 /** Project a mode's sandbox profile into the runtime's config shape. */
 export function profileToConfig(p: SandboxProfile): SandboxConfig {
+  // Emitted only when true: the runtime defaults it to false, so stock
+  // output stays byte-identical (and the profile key stable).
+  const network: SandboxConfig["network"] = {
+    allowedDomains: p.network?.allowedDomains,
+    deniedDomains: p.network?.deniedDomains ?? [],
+  };
+  if (p.allowLocalBind === true) network.allowLocalBinding = true;
   return {
     enabled: p.enabled,
-    network: { allowedDomains: p.network?.allowedDomains, deniedDomains: p.network?.deniedDomains ?? [] },
+    network,
     filesystem: {
       denyRead: p.denyRead ?? [],
       ...(p.allowRead ? { allowRead: p.allowRead } : {}),
@@ -396,6 +412,14 @@ function tightenSandbox(base: SandboxProfile, rawOver: unknown, where: string, o
   }
   if (over.writable === false) result.writable = false; // can force read-only, never re-enable writes
   if (over.askOnBlockedHost === false) result.askOnBlockedHost = false; // silent-deny is stricter than asking
+  // Tighten-only like sandbox.enabled, except repeating the inherited value
+  // is silent; only requesting `true` the base lacks warns. An explicit
+  // `false` only materializes when the base actually has `true` (real
+  // tightening); otherwise the field stays absent rather than `false`.
+  if (over.allowLocalBind === false && base.allowLocalBind === true) result.allowLocalBind = false;
+  if (over.allowLocalBind === true && base.allowLocalBind !== true) {
+    onError(`permission-mode: project config cannot enable sandbox.allowLocalBind; ignoring sandbox.allowLocalBind=true`);
+  }
   if (over.allowWrite !== undefined) result.allowWrite = intersect(base.allowWrite, over.allowWrite);
   if (over.denyRead !== undefined) result.denyRead = union(base.denyRead, over.denyRead);
   if (over.allowRead !== undefined) result.allowRead = intersect(base.allowRead, over.allowRead); // may only close carve-outs
