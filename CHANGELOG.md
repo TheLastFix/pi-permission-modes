@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Optional per-rule reasons (`{ action, reason }`) on permission patterns.**
+  A pattern entry can now be an object like
+  `"grep *": { "action": "deny", "reason": "Don't use grep via bash — use the
+  dedicated grep tool instead" }`, so a block tells the model what to do
+  instead of just what failed. Fully backwards compatible (bare
+  `"pattern": "deny"` keeps the generic message); on `ask` rules the reason
+  is only used when the prompt is refused. Resolution is unchanged — the reason
+  travels with the winning rule and never loosens anything, so project overlays
+  stay tighten-only.
+
 ## [2.4.1]
 
 ### Security

@@ -447,6 +447,17 @@ characters incl. `/`**, `?` matches one, `~`/`$HOME` expand, **the last matching
 pattern wins** (put `"*"` first as the default), and across the `path` /
 `external_directory` / per-surface layers the **most restrictive wins**.
 
+A pattern entry can also carry an optional reason explaining the block:
+`"grep *": { "action": "deny", "reason": "Don't use grep via bash — use the
+dedicated grep tool instead" }`. The plain `"pattern": "deny"` form keeps
+working (the generic message is used). The reason is returned to the agent when
+the rule blocks, and — for `ask` rules — when the prompt is refused (an approval
+just proceeds, the reason is never shown then). It never loosens anything:
+resolution is unchanged, the reason simply travels with the winning rule.
+Reasons are user-controlled text rendered to the model — write them as
+instructions you trust, and treat a reason arriving from someone else's project
+config like any other repo content (see SECURITY.md).
+
 ### Keeping your global config current
 
 `/perm init` writes a **full copy** of the stock defaults so you can edit values

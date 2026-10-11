@@ -25,8 +25,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PlanApprovalConfig } from "./plan-approval.ts";
 import {
+  MAX_RULE_REASON,
   type Action,
   type ModeDef,
+  type PatternValue,
   PLAN_PROMPT_SENTINEL,
   type PermissionModeConfig,
   type SandboxProfile,
@@ -233,6 +235,47 @@ const isAction = (v: unknown): v is Action => v === "allow" || v === "ask" || v 
 const isIndexLikeKey = (k: string): boolean => /^(0|[1-9]\d*)$/.test(k);
 
 /**
+ * Clean one pattern-map entry value: a bare action string, or an object of the
+ * form `{ action, reason? }` (`message` accepted as an alias of `reason`).
+ * Invalid actions fail safe to "deny"; invalid reasons are dropped with a
+ * warning (over-long reasons are truncated). The returned reason is trimmed.
+ */
+function cleanRule(value: unknown, label: string, onError: OnError): PatternValue {
+  if (isAction(value)) return value;
+  if (!isPlainObject(value)) {
+    onError(`permission-mode: invalid action "${String(value)}" for ${label}; treating as deny`);
+    return "deny";
+  }
+  const action: Action = isAction(value.action) ? value.action : "deny";
+  if (!isAction(value.action)) {
+    onError(`permission-mode: invalid action "${String(value.action)}" for ${label}; treating as deny`);
+  }
+  for (const k of Object.keys(value)) {
+    if (k !== "action" && k !== "reason" && k !== "message") {
+      onError(`permission-mode: ignoring unknown key "${k}" for ${label} (did you mean "reason"?)`);
+    }
+  }
+  const rawReason = value.reason ?? value.message;
+  if (rawReason === undefined) return action;
+  if (typeof rawReason !== "string") {
+    onError(`permission-mode: ignoring non-string reason for ${label}: must be a string`);
+    return { action };
+  }
+  const trimmed = rawReason.trim();
+  if (!trimmed) {
+    onError(`permission-mode: ignoring empty reason for ${label}`);
+    return { action };
+  }
+  if (trimmed.length > MAX_RULE_REASON) {
+    onError(
+      `permission-mode: reason for ${label} is ${trimmed.length} chars; truncating to ${MAX_RULE_REASON}`,
+    );
+    return { action, reason: trimmed.slice(0, MAX_RULE_REASON) };
+  }
+  return { action, reason: trimmed };
+}
+
+/**
  * Clean a raw permission object: drop unknown surfaces and coerce invalid action
  * values to "deny" (fail-safe), reporting each via onError. Warns on
  * array-index-like pattern keys, whose iteration order JS silently front-loads.
@@ -257,20 +300,14 @@ function cleanPermission(raw: unknown, where: string, onError: OnError): Partial
         out[surface] = "deny";
       }
     } else if (isPlainObject(value)) {
-      const map: Record<string, Action> = {};
+      const map: Record<string, PatternValue> = {};
       for (const [pat, act] of safeEntries(value)) {
         if (isIndexLikeKey(pat)) {
           onError(
             `permission-mode: pattern "${pat}" for ${key} in ${where} is a bare number - JS reorders such keys to the FRONT of the map, so last-match-wins may not follow file order; prefix or quote it differently (e.g. "./${pat}")`,
           );
         }
-        if (isAction(act)) {
-          map[pat] = act;
-        } else {
-          // Fail-safe like the string form: a typo in a deny rule must not become allow.
-          onError(`permission-mode: invalid action "${act}" for ${key}.${pat} in ${where}; treating as deny`);
-          map[pat] = "deny";
-        }
+        map[pat] = cleanRule(act, `${key}.${pat} in ${where}`, onError);
       }
       out[surface] = map;
     } else {
@@ -632,15 +669,15 @@ export function persistModeRule(
   // Seed the map from what is in the FILE, else from the effective stock+global
   // surface value (the project overlay is never consulted: a project tighten
   // must not be baked into the user's global config), else "ask".
-  let map: Record<string, Action>;
+  let map: Record<string, PatternValue>;
   if (isPlainObject(current)) {
-    map = { ...(current as Record<string, Action>) };
+    map = { ...(current as Record<string, PatternValue>) };
   } else if (typeof current === "string") {
     map = { "*": current as Action };
   } else {
     const base = loadGlobalModeConfig(agentDir);
     const baseValue = hasMode(base.modes, modeName) ? base.modes[modeName].permission[surface] : undefined;
-    map = typeof baseValue === "string" ? { "*": baseValue } : isPlainObject(baseValue) ? { ...(baseValue as Record<string, Action>) } : {};
+    map = typeof baseValue === "string" ? { "*": baseValue } : isPlainObject(baseValue) ? { ...(baseValue as Record<string, PatternValue>) } : {};
   }
   if (!("*" in map)) map["*"] = "ask"; // keep prompting for other names
   map[key] = action;
